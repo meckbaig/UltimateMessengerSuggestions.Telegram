@@ -1,0 +1,14 @@
+version: '3.9'
+
+services:
+  ultimate_messenger_telegram:
+    build: .
+    container_name: ultimate_messenger_telegram
+    deploy:
+      resources:
+        limits:
+          memory: 1024Mb
+          cpus: "2"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+    restart: unless-stopped
