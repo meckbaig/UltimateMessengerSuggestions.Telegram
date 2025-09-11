@@ -10,5 +10,5 @@ services:
           memory: 1024Mb
           cpus: "2"
     environment:
-      - ASPNETCORE_ENVIRONMENT=Production
+      - DOTNET_ENVIRONMENT=Production
     restart: unless-stopped

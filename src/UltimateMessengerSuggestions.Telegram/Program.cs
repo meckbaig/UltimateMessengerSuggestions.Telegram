@@ -17,6 +17,9 @@ try
 	builder.Logging.ClearProviders().AddSerilog(Log.Logger);
 	builder.Services.AddDatabaseConnection();
 	builder.Services.AddBotClient();
+	builder.Services.AddSingleton<IBotMessageHandler, BotMessageHandler>();
+	builder.Services.AddSingleton<IBotInlineQueryHandler, BotInlineQueryHandler>();
+	builder.Services.AddSingleton<IMediaProcessorService, MediaProcessorService>();
 	builder.Services.AddSingleton<IBotService, BotService>();
 	builder.Services.AddSingleton<IJwtStore, JwtStore>();
 	builder.Services.AddScoped<IApiService, ApiService>();

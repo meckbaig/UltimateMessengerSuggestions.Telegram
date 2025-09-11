@@ -23,6 +23,9 @@ internal static class ServiceCollectionExtensions
 			.AddOptionsWithValidateOnStart<BotOptions>()
 			.BindConfiguration(BotOptions.ConfigurationSectionName);
 		services
+			.AddOptionsWithValidateOnStart<MediaOptions>()
+			.BindConfiguration(MediaOptions.ConfigurationSectionName);
+		services
 			.AddOptionsWithValidateOnStart<SeqOptions>()
 			.BindConfiguration(SeqOptions.ConfigurationSectionName);
 		services
@@ -43,6 +46,7 @@ internal static class ServiceCollectionExtensions
 		services.AddSingleton<IValidateOptions<ApplicationOptions>, ApplicationOptionsValidator>();
 		services.AddSingleton<IValidateOptions<ConnectionStringsOptions>, ConnectionStringsOptionsValidator>();
 		services.AddSingleton<IValidateOptions<BotOptions>, BotOptionsValidator>();
+		services.AddSingleton<IValidateOptions<MediaOptions>, MediaOptionsValidator>();
 		services.AddSingleton<IValidateOptions<SeqOptions>, SeqOptionsValidator>();
 		services.AddSingleton<IValidateOptions<ConsoleLogOptions>, ConsoleLogOptionsValidator>();
 		services.AddSingleton<IValidateOptions<DebugLogOptions>, DebugLogOptionsValidator>();

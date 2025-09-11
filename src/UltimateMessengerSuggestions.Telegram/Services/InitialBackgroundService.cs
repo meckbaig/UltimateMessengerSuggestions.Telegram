@@ -1,4 +1,3 @@
-
 using Telegram.Bot;
 using Telegram.Bot.Polling;
 using UltimateMessengerSuggestions.Telegram.Services.Interfaces;
@@ -22,7 +21,7 @@ internal class InitialBackgroundService : BackgroundService
 	{
 		var receiverOptions = new ReceiverOptions
 		{
-			AllowedUpdates = { }
+			AllowedUpdates = []
 		};
 
 		_botClient.StartReceiving(
