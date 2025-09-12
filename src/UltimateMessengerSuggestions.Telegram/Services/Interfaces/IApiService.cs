@@ -32,4 +32,13 @@ public interface IApiService
 	/// <param name="cancellationToken">Cancellation token.</param>
 	/// <returns>Search results.</returns>
 	Task<List<MediaFileDto>> GetSuggestionsAsync(string jwt, string searchString, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Get media files based on user filters string.
+	/// </summary>
+	/// <param name="jwt">Authentification token.</param>
+	/// <param name="userFiltersString">User data filters.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Search results.</returns>
+	Task<List<MediaFileDto>> GetAsync(string jwt, string userFiltersString, CancellationToken cancellationToken = default);
 }

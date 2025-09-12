@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using UltimateMessengerSuggestions.Telegram.Common.Options;
 using UltimateMessengerSuggestions.Telegram.DbContexts;
+using UltimateMessengerSuggestions.Telegram.Extensions;
 using UltimateMessengerSuggestions.Telegram.Models.Dtos;
 using UltimateMessengerSuggestions.Telegram.Services.Interfaces;
 
@@ -23,6 +24,22 @@ internal class ApiService : IApiService
 		_context = context;
 	}
 
+	public async Task<List<MediaFileDto>> GetAsync(string jwt, string userFiltersString, CancellationToken cancellationToken = default)
+	{
+		_http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
+		var filters = FilterParser.ParseFilters(userFiltersString);
+		string query = $"{_options.Api.TrimEnd('/')}/v1/media?orderBy=id desc&take=5&";
+		if (filters.Any())
+			query += "&" + string.Join("&", filters.Select(f => "filters=" + Uri.EscapeDataString(f)));
+
+		var response = await _http.GetAsync(query, cancellationToken);
+		response.EnsureSuccessStatusCode();
+
+		var json = await response.Content.ReadAsStringAsync();
+		var data = JsonSerializer.Deserialize<GetResponse>(json, _jsonOptions);
+		return data?.Items ?? [];
+	}
+
 	public async Task<List<MediaFileDto>> GetSuggestionsAsync(string jwt, string searchString, CancellationToken cancellationToken = default)
 	{
 		_http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
@@ -31,7 +48,7 @@ internal class ApiService : IApiService
 		response.EnsureSuccessStatusCode();
 
 		var json = await response.Content.ReadAsStringAsync();
-		var data = JsonSerializer.Deserialize<GetSuggestionsResponse>(json, _jsonOptions);
+		var data = JsonSerializer.Deserialize<GetResponse>(json, _jsonOptions);
 		return data?.Items ?? [];
 	}
 
@@ -65,7 +82,7 @@ internal class ApiService : IApiService
 	}
 }
 
-internal class GetSuggestionsResponse
+internal class GetResponse
 {
 	/// <summary>
 	/// List of media files that match the search criteria.

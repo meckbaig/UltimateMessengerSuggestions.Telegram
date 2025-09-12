@@ -4,5 +4,5 @@ namespace UltimateMessengerSuggestions.Telegram.Services.Interfaces;
 
 internal interface IBotMessageHandler
 {
-	Task<bool> HandleMessageAsync(Message message, CancellationToken cancellationToken);
+	Task HandleMessageAsync(Message message, CancellationToken cancellationToken);
 }
