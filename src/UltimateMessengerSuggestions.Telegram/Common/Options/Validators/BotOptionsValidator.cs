@@ -19,6 +19,11 @@ sealed class BotOptionsValidator : IValidateOptions<BotOptions>
 			failures.AppendLine($"'{BotOptions.ConfigurationSectionName}:" +
 				$"{nameof(BotOptions.Token)}' cannot be null or empty.");
 		}
+		if (options.CacheTimeInSeconds <= 0)
+		{
+			failures.AppendLine($"'{BotOptions.ConfigurationSectionName}:" +
+				$"{nameof(BotOptions.CacheTimeInSeconds)}' must be greater than 0.");
+		}
 
 		return failures.Length > 0
 			? ValidateOptionsResult.Fail(failures.ToString())

@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.InlineQueryResults;
+using UltimateMessengerSuggestions.Telegram.Common.Options;
 using UltimateMessengerSuggestions.Telegram.Models.Dtos;
 using UltimateMessengerSuggestions.Telegram.Models.Internal.Enums;
 using UltimateMessengerSuggestions.Telegram.Services.Interfaces;
@@ -15,55 +17,46 @@ internal class BotInlineQueryHandler : IBotInlineQueryHandler
 	private readonly IJwtStore _jwtStore;
 	private readonly IServiceProvider _serviceProvider;
 	private readonly IMediaProcessorService _mediaProcessorService;
+	private readonly BotOptions _botOptions;
 
-	//private readonly ConcurrentDictionary<long, CancellationTokenSource> _debounceCts = new();
 	private readonly ConcurrentDictionary<long, DateTime> _userLastQueryTime = new();
 	private readonly List<MediaQueryState> _userQueries = new();
 	private readonly object _userQueriesLock = new();
 	private long _operation = 0;
+
+	private const bool LogOperations = false;
+	private const bool InvalidateOldResponses = false;
 
 	public BotInlineQueryHandler(
 		ILogger<BotInlineQueryHandler> logger,
 		ITelegramBotClient botClient,
 		IJwtStore jwtStore,
 		IServiceProvider serviceProvider,
-		IMediaProcessorService mediaProcessorService)
+		IMediaProcessorService mediaProcessorService,
+		IOptions<BotOptions> botOptions)
 	{
 		_logger = logger;
 		_botClient = botClient;
 		_jwtStore = jwtStore;
 		_serviceProvider = serviceProvider;
 		_mediaProcessorService = mediaProcessorService;
+		_botOptions = botOptions.Value;
 	}
 
 	public async Task HandleInlineQueryAsync(InlineQuery query, CancellationToken cancellationToken)
 	{
-		//var userId = query.From.Id;
-
-		//if (_debounceCts.TryRemove(userId, out var old))
-		//	old.Cancel();
-
-		//var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-		//_debounceCts[userId] = cts;
-
-		//_ = Task.Delay(500, cts.Token)
-		//	.ContinueWith(async t =>
-		//	{
-		//		if (!t.IsCanceled)
-		//		{
-		//			long operation = Interlocked.Increment(ref _operation);
-		//			_logger.LogDebug("Operation {Count} started", operation);
-		//			_logger.LogDebug("Operation text: {Text}", query.Query);
-		//			await ProcessInlineQueryAsync(query, cancellationToken);
-		//			_logger.LogDebug("Operation {Count} ended", operation);
-		//		}
-		//	}, TaskScheduler.Default);
-
-		long operation = Interlocked.Increment(ref _operation);
-		_logger.LogDebug("Operation {Count} started", operation);
-		_logger.LogDebug("Operation text: {Text}", query.Query);
-		await ProcessInlineQueryAsync(query, cancellationToken);
-		_logger.LogDebug("Operation {Count} ended", operation);
+		if (LogOperations)
+		{
+			long operation = Interlocked.Increment(ref _operation);
+			_logger.LogDebug("Operation {Count} started", operation);
+			_logger.LogDebug("Operation text: {Text}", query.Query);
+			await ProcessInlineQueryAsync(query, cancellationToken);
+			_logger.LogDebug("Operation {Count} ended", operation);
+		}
+		else
+		{
+			await ProcessInlineQueryAsync(query, cancellationToken);
+		}
 	}
 
 	private async Task ProcessInlineQueryAsync(InlineQuery query, CancellationToken cancellationToken)
@@ -96,7 +89,10 @@ internal class BotInlineQueryHandler : IBotInlineQueryHandler
 				return;
 			}
 #pragma warning disable CS4014
-			Task.Run(async () => await ReturnSuggestion(query, api, userId, jwt, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)), cancellationToken);
+			if (InvalidateOldResponses)
+				Task.Run(async () => await ReturnLastValidSuggestion(query, api, userId, jwt, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)), cancellationToken);
+			else
+				Task.Run(async () => await ReturnSuggestion(query, api, userId, jwt, cancellationToken), cancellationToken);
 #pragma warning restore CS4014
 		}
 		catch (OperationCanceledException)
@@ -109,7 +105,7 @@ internal class BotInlineQueryHandler : IBotInlineQueryHandler
 		}
 	}
 
-	private async Task<bool> ReturnSuggestion(InlineQuery query, IApiService api, long userId, string jwt, CancellationTokenSource cts)
+	private async Task<bool> ReturnLastValidSuggestion(InlineQuery query, IApiService api, long userId, string jwt, CancellationTokenSource cts)
 	{
 		var mqs = new MediaQueryState(userId, cts);
 
@@ -123,7 +119,8 @@ internal class BotInlineQueryHandler : IBotInlineQueryHandler
 		if (cts.IsCancellationRequested)
 			return false;
 
-		var results = suggestions.Select(GetInlineQueryResult).ToArray();
+		/// TODO: remove hardcode cringe
+		var results = suggestions.Where(x => x.MediaType == "picture").Select(GetInlineQueryResult).ToArray();
 
 		if (_userLastQueryTime.TryGetValue(userId, out var lastRequestTime))
 		{
@@ -151,12 +148,27 @@ internal class BotInlineQueryHandler : IBotInlineQueryHandler
 			_userQueries.Remove(mqs);
 		}
 
-		await _botClient.AnswerInlineQuery(query.Id, results, cacheTime: 10, isPersonal: true);
+		await _botClient.AnswerInlineQuery(query.Id, results, cacheTime: _botOptions.CacheTimeInSeconds, isPersonal: true);
 
 		_logger.LogInformation("User {UserId} received {Count} suggestions.", userId, results.Length);
 		return true;
 	}
 
+	private async Task<bool> ReturnSuggestion(InlineQuery query, IApiService api, long userId, string jwt, CancellationToken cancellationToken)
+	{
+		var suggestions = await api.GetSuggestionsAsync(jwt, query.Query, cancellationToken);
+
+		if (cancellationToken.IsCancellationRequested)
+			return false;
+
+		/// TODO: remove hardcode cringe
+		var results = suggestions.Where(x => x.MediaType == "picture").Select(GetInlineQueryResult).ToArray();
+
+		await _botClient.AnswerInlineQuery(query.Id, results, cacheTime: _botOptions.CacheTimeInSeconds, isPersonal: true, cancellationToken: cancellationToken);
+
+		_logger.LogInformation("User {UserId} received {Count} suggestions.", userId, results.Length);
+		return true;
+	}
 
 	private InlineQueryResult GetInlineQueryResult(MediaFileDto item)
 	{
