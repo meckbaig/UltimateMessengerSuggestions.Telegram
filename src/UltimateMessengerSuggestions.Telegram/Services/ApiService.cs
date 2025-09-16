@@ -92,6 +92,50 @@ internal class ApiService : IApiService
 
 		return response.IsSuccessStatusCode;
 	}
+
+	public async Task<string?> UploadMediaAsync(string jwt, Stream fileStream, string fileName, string mediaType, CancellationToken cancellationToken = default)
+	{
+		using var content = new MultipartFormDataContent
+		{
+			{ new StreamContent(fileStream), "File", fileName },
+			{ new StringContent(mediaType), "MediaType" }
+		};
+
+		var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.Api.TrimEnd('/')}/v1/media/upload")
+		{
+			Content = content
+		};
+		request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
+
+		var response = await _http.SendAsync(request);
+		if (!response.IsSuccessStatusCode) return null;
+
+		using var stream = await response.Content.ReadAsStreamAsync();
+		var doc = await JsonDocument.ParseAsync(stream);
+
+		return doc.RootElement.GetProperty("previewUrl").GetString();
+	}
+
+	public async Task<MediaFileDto> CreateAsync(string jwt, string userFiltersString, string mediaUrl, string mediaType, CancellationToken cancellationToken = default)
+	{
+		_http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
+		var args = FilterParser.ParseKeyValue(userFiltersString);
+		var description = args.GetValueOrDefault("description") ?? "";
+		var tags = (args.GetValueOrDefault("tags") ?? "")
+			.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.ToList();
+		var isPublic = bool.TryParse(args.GetValueOrDefault("isPublic"), out var p) && p;
+
+		var newMedia = new EditMediaFileDto(mediaType, mediaUrl, isPublic, description, tags);
+		var content = JsonContent.Create(new EditMediaRequest { MediaFile = newMedia }, options: _jsonOptions);
+
+		var response = await _http.PostAsync($"{_options.Api.TrimEnd('/')}/v1/media", content, cancellationToken);
+		response.EnsureSuccessStatusCode();
+
+		var json = await response.Content.ReadAsStringAsync();
+		var data = JsonSerializer.Deserialize<AddMediaResponse>(json, _jsonOptions);
+		return data?.MediaFile ?? throw new ArgumentNullException("Returned value is null.");
+	}
 }
 
 internal class GetResponse
@@ -127,6 +171,15 @@ internal record EditMediaRequest
 	/// </summary>
 	public required EditMediaFileDto MediaFile { get; init; }
 }
+
+public class AddMediaResponse
+{
+	/// <summary>
+	/// The media file that was added to the system.
+	/// </summary>
+	public required MediaFileDto MediaFile { get; init; }
+}
+
 
 internal class RegisterResponse
 {

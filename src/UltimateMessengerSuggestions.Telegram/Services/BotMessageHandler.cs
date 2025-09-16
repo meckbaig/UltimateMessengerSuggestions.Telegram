@@ -31,13 +31,22 @@ internal class BotMessageHandler : IBotMessageHandler
 #pragma warning disable CS4014
 		Task.Run(async () =>
 		{
-			if (message.Text!.StartsWith("/register"))
+			string messageText = message.Text ?? message.Caption ?? string.Empty;
+			if (_editState.TryGetValue(message.From!.Id, out var mediaId))
+			{
+				return await HandleEditMessageAsync(message, cancellationToken);
+			}
+			if (messageText.StartsWith("/register"))
 			{
 				return await HandleRegistrationAsync(message, cancellationToken);
 			}
-			if (message.Text!.StartsWith("/get"))
+			if (messageText.StartsWith("/get"))
 			{
 				return await HandleGetAsync(message, cancellationToken);
+			}
+			if (messageText.StartsWith("/add"))
+			{
+				return await HandleCreateAsync(message, cancellationToken);
 			}
 			return await SendMessageAsync(message.Chat.Id, "Not supported request", cancellationToken);
 		});
@@ -203,6 +212,78 @@ internal class BotMessageHandler : IBotMessageHandler
 		);
 		return true;
 	}
+
+	private async Task<bool> HandleCreateAsync(Message message, CancellationToken cancellationToken)
+	{
+		try
+		{
+			var parts = message.Caption!.Split(' ', 2);
+			if (parts.Length == 2)
+			{
+				using var scope = _serviceProvider.CreateScope();
+				var api = scope.ServiceProvider.GetRequiredService<IApiService>();
+				var userId = message.From!.Id;
+				var jwt = _jwtStore.GetToken(userId);
+
+				if (jwt == null)
+				{
+					jwt = await api.LoginAsync(userId.ToString());
+					if (jwt == null)
+					{
+						return await SendMessageAsync(message.Chat.Id, "Registration required", cancellationToken);
+					}
+					_jwtStore.SaveToken(userId, jwt);
+				}
+
+				var photo = message.Photo.Last(); // highest resolution
+				var file = await _botClient.GetFile(photo.FileId, cancellationToken);
+				await using var ms = new MemoryStream();
+				await _botClient.DownloadFile(file.FilePath, ms, cancellationToken);
+				ms.Position = 0;
+				var previewUrl = await api.UploadMediaAsync(jwt, ms, Path.GetFileName(file.FilePath), "picture", cancellationToken);
+				if (previewUrl == null)
+				{
+					return await SendMessageAsync(message.Chat.Id, "❌ File upload error", cancellationToken);
+				}
+
+				var userFiltersString = parts[1];
+				var result = await api.CreateAsync(jwt, userFiltersString, previewUrl, "picture", cancellationToken);
+				if (result == null)
+				{
+					return await SendMessageAsync(message.Chat.Id, "❌ Media creation error", cancellationToken);
+				}
+
+				var keyboard = new InlineKeyboardMarkup(new[]
+				{
+					InlineKeyboardButton.WithCallbackData("✏ Edit", $"edit:{result.Id}")
+				});
+
+				var caption = $"🆔 {result.Id}\n" +
+							  $"📄 {result.Description}\n" +
+							  $"🏷️ {string.Join(", ", result.Tags)}";
+
+				await _botClient.SendPhoto(
+					chatId: message.Chat.Id,
+					photo: _mediaProcessorService.ProcessPictureLink(result.MediaUrl, PictureSize.Small),
+					caption: caption,
+					replyMarkup: keyboard,
+					cancellationToken: cancellationToken
+				);
+
+				return true;
+			}
+			else
+			{
+				return await SendMessageAsync(message.Chat.Id, "Usage: /add d:\"desc text\" t:tag_name p:false\n<your_media.jpg>", cancellationToken);
+			}
+		}
+		catch (Exception ex) 
+		{ 
+			_logger.LogError(ex, "Error during media creation for user {UserId}", message.From!.Id);
+			return await SendMessageAsync(message.Chat.Id, "❌ Media creation error", cancellationToken);
+		}
+	}
+
 	private async Task<bool> SendMessageAsync(long id, string message, CancellationToken cancellationToken)
 	{
 		try

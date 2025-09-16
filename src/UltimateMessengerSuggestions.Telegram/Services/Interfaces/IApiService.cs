@@ -51,4 +51,6 @@ public interface IApiService
 	/// <param name="newTags">New tags collection.</param>
 	/// <returns><see langword="true"/> if update was successfull; otherwise <see langword="false"/>.</returns>
 	Task<bool> UpdateAsync(string jwt, string mediaId, string newDescription, List<string> newTags, CancellationToken cancellationToken = default);
+	Task<string?> UploadMediaAsync(string jwt, Stream fileStream, string fileName, string mediaType, CancellationToken cancellationToken = default);
+	Task<MediaFileDto> CreateAsync(string jwt, string userFiltersString, string mediaUrl, string mediaType, CancellationToken cancellationToken = default);
 }
