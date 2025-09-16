@@ -21,6 +21,11 @@ public record MediaFileDto
 	public string MediaUrl { get; init; } = null!;
 
 	/// <summary>
+	/// Indicates whether the media file is free to use.
+	/// </summary>
+	public bool IsPublic { get; init; } = false;
+
+	/// <summary>
 	/// Description of the media file content.
 	/// </summary>
 	public string Description { get; init; } = null!;
@@ -44,7 +49,8 @@ public record MediaFileDto
 	/// <param name="mediaType">Media file type.</param>
 	/// <param name="tags">List of tags associated with the file.</param>
 	/// <param name="messageLocation">Location of the message associated with the media file, if applicable.</param>
-	public MediaFileDto(string id, string description, string mediaUrl, string mediaType, List<string> tags, MessageLocationDto? messageLocation = null)
+	/// <param name="isPublic">Indicates whether the media file is free to use.</param>
+	public MediaFileDto(string id, string description, string mediaUrl, string mediaType, List<string> tags, MessageLocationDto? messageLocation = null, bool isPublic = false)
 	{
 		Id = id;
 		Description = description;
@@ -52,5 +58,6 @@ public record MediaFileDto
 		MediaType = mediaType;
 		Tags = tags;
 		MessageLocation = messageLocation;
+		IsPublic = isPublic;
 	}
 }

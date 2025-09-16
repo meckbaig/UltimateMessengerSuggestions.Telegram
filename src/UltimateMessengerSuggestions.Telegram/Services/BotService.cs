@@ -33,6 +33,15 @@ internal class BotService : IBotService
 			_logger.LogDebug("Received inline query from {UserId}: {QueryText}", update.InlineQuery?.From.Id, update.InlineQuery?.Query);
 			await _inlineQueryHandler.HandleInlineQueryAsync(update.InlineQuery!, cancellationToken);
 		}
+		else if (update.Type == UpdateType.CallbackQuery)
+		{
+			_logger.LogDebug("Received callback query from {UserId}: {Data}", update.CallbackQuery?.From.Id, update.CallbackQuery?.Data);
+			await _messageHandler.HandleCallbackQueryAsync(update.CallbackQuery!, cancellationToken);
+		}
+		else
+		{
+			_logger.LogWarning("Unhandled update type: {UpdateType}", update.Type);
+		}
 	}
 
 	public Task HandleErrorAsync(ITelegramBotClient bot, Exception ex, CancellationToken cancellationToken)

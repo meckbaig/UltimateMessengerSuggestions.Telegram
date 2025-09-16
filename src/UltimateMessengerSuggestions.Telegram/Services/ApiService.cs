@@ -27,7 +27,7 @@ internal class ApiService : IApiService
 	public async Task<List<MediaFileDto>> GetAsync(string jwt, string userFiltersString, CancellationToken cancellationToken = default)
 	{
 		_http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
-		var filters = FilterParser.ParseFilters(userFiltersString);
+		var filters = FilterParser.ParseGetFilters(userFiltersString);
 		string query = $"{_options.Api.TrimEnd('/')}/v1/media?orderBy=id desc&take=5&";
 		if (filters.Any())
 			query += "&" + string.Join("&", filters.Select(f => "filters=" + Uri.EscapeDataString(f)));
@@ -80,6 +80,18 @@ internal class ApiService : IApiService
 		var data = JsonSerializer.Deserialize<RegisterResponse>(json, _jsonOptions);
 		return data?.Token;
 	}
+
+	public async Task<bool> UpdateAsync(string jwt, string mediaId, string newDescription, List<string> newTags, CancellationToken cancellationToken = default)
+	{
+		var mediaToEdit = (await GetAsync(jwt, $"i:{mediaId}", cancellationToken)).Single();
+		var editedMedia = new EditMediaFileDto(mediaToEdit.MediaType, mediaToEdit.MediaUrl, mediaToEdit.IsPublic, newDescription, newTags);
+
+		var content = JsonContent.Create(new EditMediaRequest { MediaFile = editedMedia }, options: _jsonOptions);
+		var response = await _http.PutAsync($"{_options.Api.TrimEnd('/')}/v1/media/{mediaId}", content, cancellationToken);
+		response.EnsureSuccessStatusCode();
+
+		return response.IsSuccessStatusCode;
+	}
 }
 
 internal class GetResponse
@@ -106,6 +118,14 @@ internal record RegisterRequest
 	/// Client type, e.g., "tg" for Telegram.
 	/// </summary>
 	public string Client { get; set; } = "tg";
+}
+
+internal record EditMediaRequest
+{
+	/// <summary>
+	/// The media file to be edited.
+	/// </summary>
+	public required EditMediaFileDto MediaFile { get; init; }
 }
 
 internal class RegisterResponse

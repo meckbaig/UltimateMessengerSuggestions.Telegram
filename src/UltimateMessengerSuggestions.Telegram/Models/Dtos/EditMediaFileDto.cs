@@ -26,4 +26,13 @@ internal class EditMediaFileDto
 	/// List of tags associated with the file.
 	/// </summary>
 	public List<string> Tags { get; init; } = [];
+
+	public EditMediaFileDto(string mediaType, string mediaUrl, bool isPublic, string description, List<string> tags)
+	{
+		MediaType = mediaType;
+		MediaUrl = mediaUrl;
+		IsPublic = isPublic;
+		Description = description;
+		Tags = tags;
+	}
 }

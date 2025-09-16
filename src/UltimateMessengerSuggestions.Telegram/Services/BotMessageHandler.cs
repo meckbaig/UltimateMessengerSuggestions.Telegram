@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
+using UltimateMessengerSuggestions.Telegram.Models.Internal.Enums;
 using UltimateMessengerSuggestions.Telegram.Services.Interfaces;
 
 namespace UltimateMessengerSuggestions.Telegram.Services;
@@ -11,13 +13,17 @@ internal class BotMessageHandler : IBotMessageHandler
 	private readonly ITelegramBotClient _botClient;
 	private readonly IJwtStore _jwtStore;
 	private readonly IServiceProvider _serviceProvider;
+	private readonly IMediaProcessorService _mediaProcessorService;
 
-	public BotMessageHandler(ILogger<BotMessageHandler> logger, ITelegramBotClient botClient, IJwtStore jwtStore, IServiceProvider serviceProvider)
+	private readonly ConcurrentDictionary<long, string> _editState = new();
+
+	public BotMessageHandler(ILogger<BotMessageHandler> logger, ITelegramBotClient botClient, IJwtStore jwtStore, IServiceProvider serviceProvider, IMediaProcessorService mediaProcessorService)
 	{
 		_logger = logger;
 		_botClient = botClient;
 		_jwtStore = jwtStore;
 		_serviceProvider = serviceProvider;
+		_mediaProcessorService = mediaProcessorService;
 	}
 
 	public async Task HandleMessageAsync(Message message, CancellationToken cancellationToken)
@@ -88,12 +94,16 @@ internal class BotMessageHandler : IBotMessageHandler
 			var userFiltersString = parts[1];
 			var result = await api.GetAsync(jwt, userFiltersString);
 
+			if (result.Count == 0)
+			{
+				return await SendMessageAsync(message.Chat.Id, "No results found", cancellationToken);
+			}
+
 			foreach (var item in result)
 			{
 				var keyboard = new InlineKeyboardMarkup(new[]
 				{
-					// TODO: EDIT
-					InlineKeyboardButton.WithCallbackData("✏ Редактировать", $"edit:{item.Id}")
+					InlineKeyboardButton.WithCallbackData("✏ Edit", $"edit:{item.Id}")
 				});
 
 				var caption = $"🆔 {item.Id}\n" +
@@ -128,6 +138,71 @@ internal class BotMessageHandler : IBotMessageHandler
 		}
 	}
 
+	public async Task HandleCallbackQueryAsync(CallbackQuery query, CancellationToken cancellationToken)
+	{
+		if (query.Data != null && query.Data.StartsWith("edit:"))
+		{
+			var mediaId = query.Data.Substring("edit:".Length);
+
+			_editState.TryAdd(query.From.Id, mediaId);
+
+			await _botClient.SendMessage(
+				chatId: query.Message.Chat.Id,
+				text: "Enter new data using format:\nDescription\ntag1, tag2, tag3",
+				cancellationToken: cancellationToken
+			);
+		}
+	}
+
+	private async Task<bool> HandleEditMessageAsync(Message message, CancellationToken cancellationToken)
+	{
+		_editState.Remove(message.From.Id, out string mediaId);
+
+		var text = message.Text ?? string.Empty;
+		var parts = text.Split('\n', 2, StringSplitOptions.TrimEntries);
+
+		if (parts.Length < 2)
+		{
+			await _botClient.SendMessage(
+				chatId: message.Chat.Id,
+				text: "❌ Unsupported format. Use: \nDescription\ntag1, tag2, tag3",
+				cancellationToken: cancellationToken
+			);
+			return false;
+		}
+
+		var newDescription = parts[0];
+		var newTags = parts[1]
+			.Split(',', StringSplitOptions.RemoveEmptyEntries)
+			.Select(t => t.Trim())
+			.Where(t => !string.IsNullOrEmpty(t))
+			.ToList();
+
+		using var scope = _serviceProvider.CreateScope();
+		var api = scope.ServiceProvider.GetRequiredService<IApiService>();
+		var userId = message.From.Id;
+		var jwt = _jwtStore.GetToken(userId);
+
+		if (jwt == null)
+		{
+			jwt = await api.LoginAsync(userId.ToString());
+			if (jwt == null)
+			{
+				await _botClient.SendMessage(message.Chat.Id, "❌ Registration required", cancellationToken: cancellationToken);
+				return false;
+			}
+			_jwtStore.SaveToken(userId, jwt);
+		}
+
+		var success = await api.UpdateAsync(jwt, mediaId, newDescription, newTags);
+
+		await _botClient.SendMessage(
+			chatId: message.Chat.Id,
+			text: success ? "✅ Media updated!" : "❌ Update error",
+			cancellationToken: cancellationToken
+		);
+		return true;
+	}
 	private async Task<bool> SendMessageAsync(long id, string message, CancellationToken cancellationToken)
 	{
 		try

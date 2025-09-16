@@ -41,4 +41,14 @@ public interface IApiService
 	/// <param name="cancellationToken">Cancellation token.</param>
 	/// <returns>Search results.</returns>
 	Task<List<MediaFileDto>> GetAsync(string jwt, string userFiltersString, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Update media file description and tags.
+	/// </summary>
+	/// <param name="jwt">Authentification token.</param>
+	/// <param name="mediaId">Id of media to edit.</param>
+	/// <param name="newDescription">New description value.</param>
+	/// <param name="newTags">New tags collection.</param>
+	/// <returns><see langword="true"/> if update was successfull; otherwise <see langword="false"/>.</returns>
+	Task<bool> UpdateAsync(string jwt, string mediaId, string newDescription, List<string> newTags, CancellationToken cancellationToken = default);
 }
