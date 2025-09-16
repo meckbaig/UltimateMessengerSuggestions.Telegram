@@ -176,7 +176,7 @@ internal class BotInlineQueryHandler : IBotInlineQueryHandler
 		{
 			"picture" => new InlineQueryResultPhoto(
 				id: item.Id,
-				photoUrl: _mediaProcessorService.ProcessPictureLink(item.MediaUrl, PictureSize.Full),
+				photoUrl: _mediaProcessorService.ProcessPictureLink(item.MediaUrl, PictureSize.Big),
 				thumbnailUrl: _mediaProcessorService.ProcessPictureLink(item.MediaUrl, PictureSize.Preview))
 			{
 				Title = item.Description,

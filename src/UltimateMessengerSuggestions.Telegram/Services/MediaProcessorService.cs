@@ -23,7 +23,11 @@ internal class MediaProcessorService : IMediaProcessorService
 		{
 			case PictureSize.Preview:
 				return $"{pictureUrl}&x=64&y=64&a=0";
-			case PictureSize.Full:
+			case PictureSize.Small:
+				return $"{pictureUrl}&x=256&y=256&a=1";
+			case PictureSize.Medium:
+				return $"{pictureUrl}&x=1024&y=1024&a=1";
+			case PictureSize.Big:
 				return $"{pictureUrl}&x=4096&y=4096&a=1";
 			default:
 				return pictureUrl;

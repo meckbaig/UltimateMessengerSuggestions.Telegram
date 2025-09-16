@@ -104,7 +104,7 @@ internal class BotMessageHandler : IBotMessageHandler
 				{
 					await _botClient.SendPhoto(
 						chatId: message.Chat.Id,
-						photo: item.MediaUrl,
+						photo: _mediaProcessorService.ProcessPictureLink(item.MediaUrl, PictureSize.Small),
 						caption: caption,
 						replyMarkup: keyboard,
 						cancellationToken: cancellationToken
