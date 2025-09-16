@@ -8,10 +8,34 @@ public static class FilterParser
 	{
 		{ "d", "description" },
 		{ "t", "tags" },
+		{ "p", "isPublic" },
 		{ "i", "id" }
 	};
 
-	public static List<string> ParseFilters(string input)
+	public static Dictionary<string, string> ParseKeyValue(string input)
+	{
+		var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+		var tokens = Tokenize(input);
+
+		foreach (var token in tokens)
+		{
+			var parts = token.Split(':', 2);
+			if (parts.Length != 2) continue;
+
+			var key = parts[0];
+			var value = parts[1].Trim('"');
+
+			if (Aliases.TryGetValue(key, out var fullKey))
+			{
+				result[fullKey] = value;
+			}
+		}
+
+		return result;
+	}
+
+	public static List<string> ParseGetFilters(string input)
 	{
 		// input: "/get d:\"эмо\" t:рика i:jCtzJvqf"
 
@@ -34,7 +58,7 @@ public static class FilterParser
 			}
 		}
 
-		return result;
+		return result.Count > 0 ? result : [$"{Aliases["d"]}:{input}"];
 	}
 
 	private static List<string> Tokenize(string input)
