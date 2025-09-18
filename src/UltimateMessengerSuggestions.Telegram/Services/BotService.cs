@@ -23,9 +23,10 @@ internal class BotService : IBotService
 
 	public async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken cancellationToken)
 	{
-		if (update.Type == UpdateType.Message && (update.Message?.Text != null || update.Message?.Caption != null))
+		string? messageText = update.Message?.Text ?? update.Message?.Caption;
+		if (update.Type == UpdateType.Message && (messageText != null))
 		{
-			_logger.LogDebug("Received message from {UserId}: {MessageText}", update.Message.From?.Id, update.Message.Text);
+			_logger.LogDebug("Received message from {UserId}: {MessageText}", update.Message.From?.Id, messageText);
 			await _messageHandler.HandleMessageAsync(update.Message, cancellationToken);
 		}
 		else if (update.Type == UpdateType.InlineQuery)
