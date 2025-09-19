@@ -7,7 +7,7 @@ internal static class FilterParser
 	/// <summary>
 	/// Maps short aliases to full property names.
 	/// </summary>
-	private static readonly Dictionary<string, string> Aliases = new()
+	public static readonly Dictionary<string, string> Aliases = new()
 	{
 		{ "d", "description" },
 		{ "t", "tags" },
@@ -18,7 +18,7 @@ internal static class FilterParser
 	/// <summary>
 	/// Defines the order of positional arguments for each command type.
 	/// </summary>
-	private static readonly Dictionary<CommandType, string[]> PositionalOrder = new()
+	public static readonly Dictionary<CommandType, string[]> PositionalOrder = new()
 	{
 		{ CommandType.Get, new[] { "description", "tags", "id" } },
 		{ CommandType.Add, new[] { "description", "tags", "isPublic" } },

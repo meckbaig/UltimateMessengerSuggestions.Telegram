@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
+using UltimateMessengerSuggestions.Telegram.Extensions;
 using UltimateMessengerSuggestions.Telegram.Models.Internal.Enums;
 using UltimateMessengerSuggestions.Telegram.Services.Interfaces;
 
@@ -82,6 +83,7 @@ internal class BotMessageHandler : IBotMessageHandler
 
 	private async Task<bool> HandleGetAsync(Message message, CancellationToken cancellationToken)
 	{
+
 		var parts = message.Text!.Split(' ', 2);
 		if (parts.Length == 2)
 		{
@@ -101,6 +103,7 @@ internal class BotMessageHandler : IBotMessageHandler
 			}
 
 			var userFiltersString = parts[1];
+
 			var result = await api.GetAsync(jwt, userFiltersString);
 
 			if (result.Count == 0)
@@ -143,11 +146,14 @@ internal class BotMessageHandler : IBotMessageHandler
 		}
 		else
 		{
-			return await SendMessageAsync(message.Chat.Id, "Usage: /get d:\"desc text\" t:tag_name i:a1b2c3\r\n", cancellationToken);
+			return await SendMessageAsync(
+				message.Chat.Id,
+				CommandUsageFormatter.GetUsageTemplate(FilterParser.CommandType.Get),
+				cancellationToken);
 		}
 	}
 
-	public async Task HandleCallbackQueryAsync(CallbackQuery query, CancellationToken cancellationToken)
+	public async Task<bool> HandleCallbackQueryAsync(CallbackQuery query, CancellationToken cancellationToken)
 	{
 		if (query.Data != null && query.Data.StartsWith("edit:"))
 		{
@@ -155,12 +161,12 @@ internal class BotMessageHandler : IBotMessageHandler
 
 			_editState.TryAdd(query.From.Id, mediaId);
 
-			await _botClient.SendMessage(
-				chatId: query.Message.Chat.Id,
-				text: "Enter new data using format:\nDescription\ntag1, tag2, tag3",
-				cancellationToken: cancellationToken
-			);
+			return await SendMessageAsync(
+				query.Message.Chat.Id,
+				CommandUsageFormatter.GetUsageTemplate(FilterParser.CommandType.Edit),
+				cancellationToken);
 		}
+		return false;
 	}
 
 	private async Task<bool> HandleEditMessageAsync(Message message, CancellationToken cancellationToken)
@@ -258,7 +264,10 @@ internal class BotMessageHandler : IBotMessageHandler
 			}
 			else
 			{
-				return await SendMessageAsync(message.Chat.Id, "Usage: /add d:\"desc text\" t:tag_name p:false\n<your_media.jpg>", cancellationToken);
+				return await SendMessageAsync(
+					message.Chat.Id, 
+					CommandUsageFormatter.GetUsageTemplate(FilterParser.CommandType.Add), 
+					cancellationToken);
 			}
 		}
 		catch (Exception ex) 
