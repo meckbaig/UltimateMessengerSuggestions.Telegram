@@ -27,10 +27,10 @@ internal class ApiService : IApiService
 	public async Task<List<MediaFileDto>> GetAsync(string jwt, string userFiltersString, CancellationToken cancellationToken = default)
 	{
 		_http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
-		var filters = FilterParser.ParseGetFilters(userFiltersString);
+		var filters = FilterParser.Parse(userFiltersString, FilterParser.CommandType.Get);
 		string query = $"{_options.Api.TrimEnd('/')}/v1/media?orderBy=id desc&take=5&";
 		if (filters.Any())
-			query += "&" + string.Join("&", filters.Select(f => "filters=" + Uri.EscapeDataString(f)));
+			query += "&" + string.Join("&", filters.Select(f => "filters=" + Uri.EscapeDataString($"{f.Key}:{f.Value}")));
 
 		var response = await _http.GetAsync(query, cancellationToken);
 		response.EnsureSuccessStatusCode();
@@ -81,10 +81,28 @@ internal class ApiService : IApiService
 		return data?.Token;
 	}
 
-	public async Task<bool> UpdateAsync(string jwt, string mediaId, string newDescription, List<string> newTags, CancellationToken cancellationToken = default)
+	public async Task<bool> UpdateAsync(string jwt, string mediaId, string userFiltersString, CancellationToken cancellationToken = default)
 	{
 		var mediaToEdit = (await GetAsync(jwt, $"i:{mediaId}", cancellationToken)).Single();
-		var editedMedia = new EditMediaFileDto(mediaToEdit.MediaType, mediaToEdit.MediaUrl, mediaToEdit.IsPublic, newDescription, newTags);
+		var filters = FilterParser.Parse(userFiltersString, FilterParser.CommandType.Edit);
+		var newDescription = mediaToEdit.Description;
+		var newTags = mediaToEdit.Tags;
+		var newIsPublic = mediaToEdit.IsPublic;
+		if (filters.TryGetValue("description", out string desc))
+		{
+			newDescription = desc;
+		}
+		if (filters.TryGetValue("tags", out string tagsStr))
+		{
+			newTags = tagsStr
+				.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+				.ToList();
+		}
+		if (filters.TryGetValue("isPublic", out string isPublicStr))
+		{
+			newIsPublic = bool.TryParse(isPublicStr, out var p) && p;
+		}
+		var editedMedia = new EditMediaFileDto(mediaToEdit.MediaType, mediaToEdit.MediaUrl, newIsPublic, newDescription, newTags);
 
 		var content = JsonContent.Create(new EditMediaRequest { MediaFile = editedMedia }, options: _jsonOptions);
 		var response = await _http.PutAsync($"{_options.Api.TrimEnd('/')}/v1/media/{mediaId}", content, cancellationToken);
@@ -119,12 +137,12 @@ internal class ApiService : IApiService
 	public async Task<MediaFileDto> CreateAsync(string jwt, string userFiltersString, string mediaUrl, string mediaType, CancellationToken cancellationToken = default)
 	{
 		_http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
-		var args = FilterParser.ParseKeyValue(userFiltersString);
-		var description = args.GetValueOrDefault("description") ?? "";
-		var tags = (args.GetValueOrDefault("tags") ?? "")
+		var filters = FilterParser.Parse(userFiltersString, FilterParser.CommandType.Add);
+		var description = filters.GetValueOrDefault("description") ?? "";
+		var tags = (filters.GetValueOrDefault("tags") ?? "")
 			.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
 			.ToList();
-		var isPublic = bool.TryParse(args.GetValueOrDefault("isPublic"), out var p) && p;
+		var isPublic = bool.TryParse(filters.GetValueOrDefault("isPublic"), out var p) && p;
 
 		var newMedia = new EditMediaFileDto(mediaType, mediaUrl, isPublic, description, tags);
 		var content = JsonContent.Create(new EditMediaRequest { MediaFile = newMedia }, options: _jsonOptions);

@@ -1,9 +1,12 @@
-using System.Text;
+using System.Text.RegularExpressions;
 
 namespace UltimateMessengerSuggestions.Telegram.Extensions;
 
-public static class FilterParser
+internal static class FilterParser
 {
+	/// <summary>
+	/// Maps short aliases to full property names.
+	/// </summary>
 	private static readonly Dictionary<string, string> Aliases = new()
 	{
 		{ "d", "description" },
@@ -12,86 +15,150 @@ public static class FilterParser
 		{ "i", "id" }
 	};
 
-	public static Dictionary<string, string> ParseKeyValue(string input)
+	/// <summary>
+	/// Defines the order of positional arguments for each command type.
+	/// </summary>
+	private static readonly Dictionary<CommandType, string[]> PositionalOrder = new()
+	{
+		{ CommandType.Get, new[] { "description", "tags", "id" } },
+		{ CommandType.Add, new[] { "description", "tags", "isPublic" } },
+		{ CommandType.Edit, new[] { "description", "tags", "isPublic" } }
+	};
+
+	/// <summary>
+	/// Parses the input string into a dictionary of key-value pairs.
+	/// </summary>
+	/// <param name="input">Input user string without command.</param>
+	/// <param name="commandType">Type of command to determine parsing mode and positional argument order.</param>
+	/// <returns>Key-value dictionary of filters.</returns>
+	public static Dictionary<string, string> Parse(string input, CommandType commandType)
 	{
 		var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		if (string.IsNullOrWhiteSpace(input)) return result;
 
-		var tokens = Tokenize(input);
+		if (ContainsExplicitKeys(input))
+			return ParseKeyValueMode(input);
 
-		foreach (var token in tokens)
+		return ParsePositionalMode(input, commandType);
+	}
+
+	/// <summary>
+	/// Checks if the input contains explicit key-value pairs.
+	/// </summary>
+	/// <param name="input">Input string.</param>
+	/// <returns><see langword="true"/> if the input contains explicit key-value pairs; otherwise <see langword="false"/>.</returns>
+	private static bool ContainsExplicitKeys(string input)
+	{
+		// search for d:, t:, p:, i: that are not escaped by a backslash
+		return Regex.IsMatch(input, @"(?<!\\)\b(d|t|p|i)\s*:", RegexOptions.IgnoreCase);
+	}
+
+	/// <summary>
+	/// Parses input in key-value mode.
+	/// </summary>
+	/// <param name="input">Input string.</param>
+	/// <returns>Key-value dictionary.</returns>
+	private static Dictionary<string, string> ParseKeyValueMode(string input)
+	{
+		var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		var pattern = new Regex(@"(?<!\\)\b([a-zA-Z]+)\s*:", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+		var matches = pattern.Matches(input);
+
+		if (matches.Count == 0)
 		{
-			var parts = token.Split(':', 2);
-			if (parts.Length != 2) continue;
+			// nothing found - treat entire input as description
+			result[Aliases["d"]] = UnescapeAndTrim(input);
+			return result;
+		}
 
-			var key = parts[0];
-			var value = parts[1].Trim('"');
+		for (int i = 0; i < matches.Count; i++)
+		{
+			var keyAlias = matches[i].Groups[1].Value.ToLower();
+			var valueStart = matches[i].Index + matches[i].Length;
+			var valueEnd = (i + 1 < matches.Count) ? matches[i + 1].Index : input.Length;
+			var rawValue = input.Substring(valueStart, valueEnd - valueStart).Trim();
 
-			if (Aliases.TryGetValue(key, out var fullKey))
+			// remove surrounding quotes and unescape colons
+			rawValue = TrimSurroundingQuotes(rawValue);
+			rawValue = UnescapeAndTrim(rawValue);
+
+			if (Aliases.TryGetValue(keyAlias, out var fullKey))
 			{
-				result[fullKey] = value;
+				result[fullKey] = rawValue;
+			}
+			else
+			{
+				// unknown key - put it in description as a fallback (to not lose anything)
+				if (!result.ContainsKey(Aliases["d"])) 
+					result[Aliases["d"]] = rawValue;
+				else 
+					result[Aliases["d"]] = $"{result[Aliases["d"]]} {rawValue}";
 			}
 		}
 
 		return result;
 	}
 
-	public static List<string> ParseGetFilters(string input)
+	/// <summary>
+	/// Parses input in positional mode based on command type.
+	/// </summary>
+	/// <param name="input">Input string.</param>
+	/// <param name="commandType">Type of command to determine parsing mode and positional argument order.</param>
+	/// <returns>Key-value dictionary.</returns>
+	private static Dictionary<string, string> ParsePositionalMode(string input, CommandType commandType)
 	{
-		// input: "/get d:\"эмо\" t:рика i:jCtzJvqf"
+		var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-		var result = new List<string>();
+		// remove empty lines and trim each line
+		var lines = input
+			.Split(["\r\n", "\n"], StringSplitOptions.None)
+			.Select(l => l.Trim())
+			.Where(l => !string.IsNullOrEmpty(l))
+			.ToArray();
 
-		// tokenization taking into account quotes
-		var tokens = Tokenize(input);
+		var order = PositionalOrder[commandType];
 
-		foreach (var token in tokens)
+		for (int i = 0; i < lines.Length && i < order.Length; i++)
 		{
-			var parts = token.Split(':', 2);
-			if (parts.Length != 2) continue;
-
-			var key = parts[0];
-			var value = parts[1].Trim('"');
-
-			if (Aliases.TryGetValue(key, out var fullKey))
-			{
-				result.Add($"{fullKey}:{value}");
-			}
+			result[order[i]] = UnescapeAndTrim(TrimSurroundingQuotes(lines[i]));
 		}
 
-		return result.Count > 0 ? result : [$"{Aliases["d"]}:{input}"];
+		return result;
 	}
 
-	private static List<string> Tokenize(string input)
+	/// <summary>
+	/// Trims surrounding quotes from a string if they exist.
+	/// </summary>
+	/// <param name="s">Input string.</param>
+	/// <returns>Substring without quotes.</returns>
+	private static string TrimSurroundingQuotes(string s)
 	{
-		var tokens = new List<string>();
-		var sb = new StringBuilder();
-		bool inQuotes = false;
+		if (string.IsNullOrEmpty(s)) 
+			return s;
+		if (s.Length >= 2 && s.StartsWith('\"') && s.EndsWith('\"')) 
+			return s.Substring(1, s.Length - 2);
+		return s;
+	}
 
-		foreach (var c in input)
-		{
-			if (c == '"')
-			{
-				inQuotes = !inQuotes;
-				continue;
-			}
+	/// <summary>
+	/// Replaces escaped colons (\:) with actual colons (:) and trims whitespace.
+	/// </summary>
+	/// <param name="s">Input string.</param>
+	/// <returns>String without escaped colons.</returns>
+	private static string UnescapeAndTrim(string s)
+	{
+		return string.IsNullOrEmpty(s)
+			? s 
+			: s.Replace("\\:", ":").Trim();
+	}
 
-			if (char.IsWhiteSpace(c) && !inQuotes)
-			{
-				if (sb.Length > 0)
-				{
-					tokens.Add(sb.ToString());
-					sb.Clear();
-				}
-			}
-			else
-			{
-				sb.Append(c);
-			}
-		}
-
-		if (sb.Length > 0)
-			tokens.Add(sb.ToString());
-
-		return tokens;
+	/// <summary>
+	/// Type of command to determine parsing mode and positional argument order.
+	/// </summary>
+	internal enum CommandType
+	{
+		Get,
+		Add,
+		Edit
 	}
 }

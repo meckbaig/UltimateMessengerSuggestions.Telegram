@@ -168,24 +168,6 @@ internal class BotMessageHandler : IBotMessageHandler
 		_editState.Remove(message.From.Id, out string mediaId);
 
 		var text = message.Text ?? string.Empty;
-		var parts = text.Split('\n', 2, StringSplitOptions.TrimEntries);
-
-		if (parts.Length < 2)
-		{
-			await _botClient.SendMessage(
-				chatId: message.Chat.Id,
-				text: "❌ Unsupported format. Use: \nDescription\ntag1, tag2, tag3",
-				cancellationToken: cancellationToken
-			);
-			return false;
-		}
-
-		var newDescription = parts[0];
-		var newTags = parts[1]
-			.Split(',', StringSplitOptions.RemoveEmptyEntries)
-			.Select(t => t.Trim())
-			.Where(t => !string.IsNullOrEmpty(t))
-			.ToList();
 
 		using var scope = _serviceProvider.CreateScope();
 		var api = scope.ServiceProvider.GetRequiredService<IApiService>();
@@ -203,7 +185,7 @@ internal class BotMessageHandler : IBotMessageHandler
 			_jwtStore.SaveToken(userId, jwt);
 		}
 
-		var success = await api.UpdateAsync(jwt, mediaId, newDescription, newTags);
+		var success = await api.UpdateAsync(jwt, mediaId, text);
 
 		await _botClient.SendMessage(
 			chatId: message.Chat.Id,
@@ -217,6 +199,8 @@ internal class BotMessageHandler : IBotMessageHandler
 	{
 		try
 		{
+			if (message.Photo == null)
+				return await SendMessageAsync(message.Chat.Id, "Media is required", cancellationToken);
 			var parts = message.Caption!.Split(' ', 2);
 			if (parts.Length == 2)
 			{

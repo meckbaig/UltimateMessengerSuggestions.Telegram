@@ -47,10 +47,9 @@ public interface IApiService
 	/// </summary>
 	/// <param name="jwt">Authentification token.</param>
 	/// <param name="mediaId">Id of media to edit.</param>
-	/// <param name="newDescription">New description value.</param>
-	/// <param name="newTags">New tags collection.</param>
+	/// <param name="userFiltersString">User data filters.</param>
 	/// <returns><see langword="true"/> if update was successfull; otherwise <see langword="false"/>.</returns>
-	Task<bool> UpdateAsync(string jwt, string mediaId, string newDescription, List<string> newTags, CancellationToken cancellationToken = default);
+	Task<bool> UpdateAsync(string jwt, string mediaId, string userFiltersString, CancellationToken cancellationToken = default);
 	Task<string?> UploadMediaAsync(string jwt, Stream fileStream, string fileName, string mediaType, CancellationToken cancellationToken = default);
 	Task<MediaFileDto> CreateAsync(string jwt, string userFiltersString, string mediaUrl, string mediaType, CancellationToken cancellationToken = default);
 }
