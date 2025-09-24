@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -56,12 +57,12 @@ internal class BotMessageHandler : IBotMessageHandler
 
 	private async Task<bool> HandleRegistrationAsync(Message message, CancellationToken cancellationToken)
 	{
-		var parts = message.Text!.Split(' ', 2);
-		if (parts.Length == 2)
+		string payload = ExtractPayload(message.Text!);
+		if (!string.IsNullOrEmpty(payload))
 		{
 			using var scope = _serviceProvider.CreateScope();
 			var api = scope.ServiceProvider.GetRequiredService<IApiService>();
-			var userHash = parts[1];
+			string userHash = payload;
 			var jwt = await api.RegisterAsync(userHash, message.From!.Id.ToString());
 			if (jwt != null)
 			{
@@ -83,9 +84,8 @@ internal class BotMessageHandler : IBotMessageHandler
 
 	private async Task<bool> HandleGetAsync(Message message, CancellationToken cancellationToken)
 	{
-
-		var parts = message.Text!.Split(' ', 2);
-		if (parts.Length == 2)
+		string payload = ExtractPayload(message.Text!);
+		if (!string.IsNullOrEmpty(payload))
 		{
 			using var scope = _serviceProvider.CreateScope();
 			var api = scope.ServiceProvider.GetRequiredService<IApiService>();
@@ -102,9 +102,7 @@ internal class BotMessageHandler : IBotMessageHandler
 				_jwtStore.SaveToken(userId, jwt);
 			}
 
-			var userFiltersString = parts[1];
-
-			var result = await api.GetAsync(jwt, userFiltersString);
+			var result = await api.GetAsync(jwt, payload);
 
 			if (result.Count == 0)
 			{
@@ -207,8 +205,8 @@ internal class BotMessageHandler : IBotMessageHandler
 		{
 			if (message.Photo == null)
 				return await SendMessageAsync(message.Chat.Id, "Media is required", cancellationToken);
-			var parts = message.Caption!.Split(' ', 2);
-			if (parts.Length == 2)
+			string payload = ExtractPayload(message.Caption!);
+			if (!string.IsNullOrEmpty(payload))
 			{
 				using var scope = _serviceProvider.CreateScope();
 				var api = scope.ServiceProvider.GetRequiredService<IApiService>();
@@ -236,8 +234,7 @@ internal class BotMessageHandler : IBotMessageHandler
 					return await SendMessageAsync(message.Chat.Id, "❌ File upload error", cancellationToken);
 				}
 
-				var userFiltersString = parts[1];
-				var result = await api.CreateAsync(jwt, userFiltersString, previewUrl, "picture", cancellationToken);
+				var result = await api.CreateAsync(jwt, payload, previewUrl, "picture", cancellationToken);
 				if (result == null)
 				{
 					return await SendMessageAsync(message.Chat.Id, "❌ Media creation error", cancellationToken);
@@ -265,16 +262,25 @@ internal class BotMessageHandler : IBotMessageHandler
 			else
 			{
 				return await SendMessageAsync(
-					message.Chat.Id, 
-					CommandUsageFormatter.GetUsageTemplate(FilterParser.CommandType.Add), 
+					message.Chat.Id,
+					CommandUsageFormatter.GetUsageTemplate(FilterParser.CommandType.Add),
 					cancellationToken);
 			}
 		}
-		catch (Exception ex) 
-		{ 
+		catch (Exception ex)
+		{
 			_logger.LogError(ex, "Error during media creation for user {UserId}", message.From!.Id);
 			return await SendMessageAsync(message.Chat.Id, "❌ Media creation error", cancellationToken);
 		}
+	}
+
+	public static string ExtractPayload(string caption)
+	{
+		if (string.IsNullOrWhiteSpace(caption))
+			return string.Empty;
+
+		// Удаляем команду, которая начинается с / и идёт первой
+		return Regex.Replace(caption, @"^/\S+\s*", "").Trim();
 	}
 
 	private async Task<bool> SendMessageAsync(long id, string message, CancellationToken cancellationToken)
